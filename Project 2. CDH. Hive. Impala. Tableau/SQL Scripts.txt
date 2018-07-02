@@ -1,0 +1,46 @@
+
+*************creating parquet file format table in hive ********************************************
+
+create table CryptoDemo(slug string, symbol string, name string, date string, ranknow int, open float, high float, low float, close float, volume int, market bigint, close_ratio float, spread float) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n' STORED AS TEXTFILE;
+load data inpath '/home/cloudera/Desktop/crypto-markets.csv' overwrite into table CryptoDemo;
+
+create table CryptoParquet(slug string, symbol string, name string, date string, ranknow int, open float, high float, low float, close float, volume int, market bigint, close_ratio float, spread float) stored as parquet;
+insert into CryptoParquet select * from CryptoDemo;
+
+**************************** some query using spark sql on table cryptoparquet **********************
+
+1. List the top 10 ranking
+
+val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
+val result = hiveContext.sql("from cryptoparquet select DISTINCT name, ranknow order by ranknow asc limit 10")
+
+2. Max Value of cryptocurrency
+val result = hiveContext.sql("from cryptoparquet select  name, MAX(high) AS MaxValue GROUP BY name limit 10")
+
+3. Most volatile cryptocurrency:
+val result = hiveContext.sql("select name, SUM(ABS(open-close)) as Volatile from cryptoparquet  group by name order by Volatile desc")
+
+4. total market value in one day
+val result = hiveContext.sql("select date, sum(market) from cryptoparquet group by date order by date asc limit 10")
+
+5. possiblity of earning too much money in one day
+val result = hiveContext.sql("select date, name, max(close/open) as mfactor from cryptoparquet where close>open group by date, name order by date, mfactor asc limit 25")
+
+
+********************************************* Queries in impala to create table for visualization in tableu **********************
+
+1. ranking 
+create external table ranking as (select DISTINCT name, ranknow from CryptoParquet order by ranknow asc);
+
+2. Max value of each CryptoCurrency
+create external table maxvalue as (select name, MAX(high) AS MaxValue from CryptoParquet GROUP BY name);
+
+3. Volatile
+create external table volatile as (select name, SUM(ABS(open-close)) as volatile from CryptoParquet group by name order by volatile desc);
+
+4. market value in one day 
+create external table market_value as (select `date`, sum(market) as market_sum from CryptoParquet group by `date` order by `date` asc);
+
+5. possibility of earning too much money in one day
+create external table earningCurrency as (select  name, `date`, max(close/open) as mfactor from CryptoParquet where close>open group by `date`, name order by `date` DESC, mfactor asc LIMIT 48000);
+
